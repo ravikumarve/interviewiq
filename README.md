@@ -50,7 +50,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Live Demo
 
-[Deployed on Vercel — link added after deployment](#)
+**🔗 https://interviewiq-hazel.vercel.app** — deployed on Vercel (Hack Devengers 1.0)
 
 ---
 
