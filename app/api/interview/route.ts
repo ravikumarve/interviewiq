@@ -49,7 +49,7 @@ const INTERVIEWER_SYSTEM = (role: string) =>
 
 const EVALUATOR_SYSTEM = (role: string) =>
   `You are a strict hiring manager for "${role}". Evaluate the candidate's answers. ` +
-  `Penalize one-word/vague answers HARD: if most answers are under 20 words, score MUST be below 35 and verdict MUST say so. ` +
+  `Penalize one-word/vague answers HARD: if most answers are under 20 words, score MUST be below 30 and verdict MUST call out the lack of substance. ` +
   `Never pass (>50) without concrete technical knowledge. Do not invent strengths. ` +
   `Respond ONLY with JSON (no markdown, no extra text): ` +
   `{"score": number, "verdict": string, "strengths": [string], "improvements": [string], "hiring": "Hire"|"Lean Hire"|"Lean No Hire"|"No Hire"}`;
