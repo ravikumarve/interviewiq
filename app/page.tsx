@@ -74,8 +74,18 @@ export default function Home() {
   async function sendAnswer() {
     const text = input.trim();
     if (!text || loading) return;
-    setInput("");
+
+    // Quality gate: block lazy answers so the AI can evaluate fairly
+    const wordCount = text.split(/\s+/).length;
+    if (wordCount < 8 || text.length < 40) {
+      setError(
+        `Your answer is too short (${wordCount} words) for a fair evaluation. ` +
+        `Aim for 2-3 sentences with a concrete example or clear reasoning — real interviewers expect substance.`
+      );
+      return;
+    }
     setError("");
+    setInput("");
     const newMessages: Msg[] = [...messages, { role: "user", content: text }];
     setMessages(newMessages);
     setLoading(true);

@@ -10,7 +10,7 @@ const NVIDIA_MODEL = process.env.NVIDIA_MODEL || "meta/llama-3.1-8b-instruct";
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "tinyllama";
 
-async function callNvidia(messages: { role: string; content: string }[], maxTokens = 300) {
+async function callNvidia(messages: { role: string; content: string }[], maxTokens = 300, model = NVIDIA_MODEL) {
   const res = await fetch(NVIDIA_URL, {
     method: "POST",
     headers: {
@@ -18,12 +18,12 @@ async function callNvidia(messages: { role: string; content: string }[], maxToke
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: NVIDIA_MODEL,
+      model,
       messages,
       max_tokens: maxTokens,
-      temperature: 0.7,
+      temperature: 0.5,
     }),
-    signal: AbortSignal.timeout(50000),
+    signal: AbortSignal.timeout(maxTokens > 300 ? 150000 : 60000),
   });
   if (!res.ok) throw new Error(`NVIDIA ${res.status}: ${await res.text()}`);
   const data = await res.json();
@@ -48,13 +48,11 @@ const INTERVIEWER_SYSTEM = (role: string) =>
   `The question must be specific, realistic, and under 30 words.`;
 
 const EVALUATOR_SYSTEM = (role: string) =>
-  `You are a senior hiring manager evaluating a candidate for the "${role}" position. ` +
-  `Analyze the interview transcript and produce a structured evaluation. ` +
-  `Respond ONLY with valid JSON (no markdown fences) shaped exactly like: ` +
-  `{"score": 0-100, "verdict": "short one-line verdict", ` +
-  `"strengths": ["strength1","strength2","strength3"], ` +
-  `"improvements": ["improvement1","improvement2","improvement3"], ` +
-  `"hiring": "Hire" | "Lean Hire" | "Lean No Hire" | "No Hire"}`;
+  `You are a strict hiring manager for "${role}". Evaluate the candidate's answers. ` +
+  `Penalize one-word/vague answers HARD: if most answers are under 20 words, score MUST be below 35 and verdict MUST say so. ` +
+  `Never pass (>50) without concrete technical knowledge. Do not invent strengths. ` +
+  `Respond ONLY with JSON (no markdown, no extra text): ` +
+  `{"score": number, "verdict": string, "strengths": [string], "improvements": [string], "hiring": "Hire"|"Lean Hire"|"Lean No Hire"|"No Hire"}`;
 
 export async function POST(req: NextRequest) {
   try {
@@ -79,13 +77,22 @@ export async function POST(req: NextRequest) {
 
     if (!content) throw new Error("Empty response from AI provider");
 
-    // If evaluating, try to parse JSON; if it fails, wrap content as raw report
+    // If evaluating, try to parse JSON; if it fails, return a harsh default rather than raw text
     if (action === "evaluate") {
       try {
-        const parsed = JSON.parse(content);
+        const cleaned = content.replace(/```json|```/g, "").trim();
+        const parsed = JSON.parse(cleaned);
         return Response.json({ evaluation: parsed });
       } catch {
-        return Response.json({ evaluation: { score: 0, verdict: content } });
+        return Response.json({
+          evaluation: {
+            score: 10,
+            verdict: "Unable to produce structured evaluation — answers likely lacked substance.",
+            strengths: [],
+            improvements: ["Provide detailed, example-backed answers during the interview."],
+            hiring: "No Hire",
+          },
+        });
       }
     }
 
