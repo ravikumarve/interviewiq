@@ -10,6 +10,26 @@
 
 ---
 
+## Screenshots
+
+<div align="center">
+
+**Setup — pick your role or paste a real job description**
+
+<img src="screenshots/1-setup-desktop.png" alt="InterviewIQ setup screen" width="700"/>
+
+**Live interview — real AI question with a 90s timer**
+
+<img src="screenshots/2-interview-desktop.png" alt="InterviewIQ live interview" width="700"/>
+
+**Assessment report — strict verdict, scorecard, weakest signal, peer benchmark**
+
+<img src="screenshots/3-report-desktop.png" alt="InterviewIQ assessment report" width="700"/>
+
+</div>
+
+---
+
 ## The Problem
 
 Most students and job seekers fail interviews not because they lack knowledge, but because they **never practice under realistic conditions**. Existing mock-interview tools are either paid, generic, or give no actionable feedback — they tell you "good job" without ever telling you what to fix.
