@@ -65,6 +65,7 @@ export default function Home() {
   const [leaderboard, setLeaderboard] = useState<any[] | null>(null);
   const [peerLoading, setPeerLoading] = useState(false);
   const recognitionRef = useRef<any>(null);
+  const voiceBaseRef = useRef(""); // committed (final) transcript — typed prefix + finalized voice
   const answerStartedRef = useRef<number>(Date.now());
   const didTimeUpRef = useRef(false);
   const followUpsRef = useRef(0); // follow-ups used on the current question (max 2)
@@ -92,31 +93,69 @@ export default function Home() {
   function startListening() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) {
-      setError("Voice input isn't supported in this browser — try Chrome, or type your answer.");
+      setError("Voice input isn't supported in this browser — try Chrome/Edge/Safari, or type your answer.");
       return;
     }
     setError("");
+    // Keep whatever the user already typed as the base; voice appends to it.
+    voiceBaseRef.current = input;
     const rec = new SR();
     rec.lang = "en-US";
     rec.interimResults = true;
-    rec.continuous = false;
+    // Keep listening for the whole answer — user taps the mic again to stop,
+    // then submits. Never auto-stops mid-sentence (that caused truncated + repeated text).
+    rec.continuous = true;
     recognitionRef.current = rec;
 
     rec.onresult = (e: any) => {
-      const transcript = Array.from(e.results)
-        .map((r: any) => r[0].transcript)
-        .join("");
-      setInput((prev) => (prev ? prev + " " : "") + transcript);
+      let finalText = "";
+      let interimText = "";
+      // e.results is CUMULATIVE — append only finalized chunks once, and show
+      // the latest interim chunk as a replaceable preview (no word repetition).
+      for (let i = 0; i < e.results.length; i++) {
+        const r = e.results[i];
+        if (r.isFinal) finalText += r[0].transcript;
+        else interimText = r[0].transcript;
+      }
+      if (finalText) {
+        voiceBaseRef.current = (voiceBaseRef.current + " " + finalText).trim();
+      }
+      const base = voiceBaseRef.current;
+      setInput(interimText ? (base ? base + " " + interimText : interimText) : base);
     };
     rec.onerror = (e: any) => {
       setListening(false);
-      if (e.error !== "aborted" && e.error !== "no-speech") {
-        setError(`Mic error: ${e.error} — or just type your answer.`);
+      switch (e.error) {
+        case "aborted":
+          break; // user stopped, no message
+        case "not-allowed":
+        case "service-not-allowed":
+          setError(
+            "Microphone access is blocked. Click the lock/padlock icon in the address bar → allow Microphone, then tap the mic again."
+          );
+          break;
+        case "no-speech":
+          setError("I didn't hear anything — tap the mic and speak, or just type your answer.");
+          break;
+        case "network":
+          setError("Voice service unavailable (network error) — type your answer instead.");
+          break;
+        default:
+          setError(`Mic error: ${e.error} — or just type your answer.`);
       }
     };
-    rec.onend = () => setListening(false);
-    rec.start();
-    setListening(true);
+    rec.onend = () => {
+      // Flush any pending preview text exactly once (no duplicates).
+      setInput(voiceBaseRef.current);
+      setListening(false);
+    };
+    try {
+      rec.start();
+      setListening(true);
+    } catch (err) {
+      setError("Couldn't start the microphone — allow mic access for this site, then tap the mic again.");
+      setListening(false);
+    }
   }
 
   // Per-question timer
@@ -583,7 +622,7 @@ export default function Home() {
                   onClick={listening ? stopListening : startListening}
                 >
                   <span className="dot"></span>
-                  {listening ? "Voice input active" : "Tap for voice input"}
+                  {listening ? "Listening — tap to stop" : "Tap for voice input"}
                 </span>
               </div>
               <textarea
