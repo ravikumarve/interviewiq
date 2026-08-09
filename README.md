@@ -1,36 +1,57 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🎯 InterviewIQ — AI Mock Interview Coach
+
+> Practice real interview questions for any role. Get instant, skill-based AI feedback. Built for **Hack Devengers 1.0** (9 Aug 2026).
+
+## The Problem
+
+Most students and job seekers fail interviews not because they lack knowledge, but because they **never practiced under realistic conditions**. Existing mock-interview tools are either paid, generic, or give no actionable feedback.
+
+**InterviewIQ solves this:** a free, instant, AI-powered mock interview that asks realistic role-specific questions, adapts to your experience level, and produces a **scored report with strengths, improvements, and a hiring verdict** — in under 10 minutes.
+
+## Key Features
+
+- 🎯 **Role-based interviews** — Frontend, Backend, Data Science, PM, DevOps, AI/ML, custom roles
+- 📊 **Adaptive difficulty** — Entry-level → Mid-level → Senior
+- 🤖 **Live AI interviewer** — real questions, one at a time, like a real interview
+- 📋 **Instant AI evaluation** — score (0–100), verdict, strengths, improvements, hiring recommendation
+- 📱 **Fully responsive** — works on desktop and mobile
+- 🖨 **Exportable report** — save or print your results
+
+## Tech Stack
+
+- **Next.js 16** (App Router, TypeScript, Tailwind CSS)
+- **NVIDIA NIM API** — `meta/llama-3.1-8b-instruct` (fast, live AI)
+- **Ollama fallback** — local CPU inference if no API key
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+npm install
+cp .env.example .env.local   # add your NVIDIA_API_KEY
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## How It Works
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Pick a role and experience level
+2. Answer 5 realistic interview questions
+3. AI generates a structured evaluation report
+4. Practice again with targeted improvement areas
 
-## Learn More
+## Environment Variables
 
-To learn more about Next.js, take a look at the following resources:
+| Variable | Description |
+|---|---|
+| `NVIDIA_API_KEY` | NVIDIA NIM API key (get at build.nvidia.com) |
+| `NVIDIA_MODEL` | Optional — default `meta/llama-3.1-8b-instruct` |
+| `OLLAMA_URL` | Optional — local fallback, default `http://localhost:11434` |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Live Demo
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+[Deployed on Vercel — link added after deployment](#)
 
-## Deploy on Vercel
+---
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Built solo in 8 hours for Hack Devengers 1.0. Think. Build. Innovate.
