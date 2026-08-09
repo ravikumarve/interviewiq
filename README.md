@@ -20,7 +20,9 @@ Most students and job seekers fail interviews not because they lack knowledge, b
 
 - 🎯 **Role-based interviews** — Frontend, Backend, Data Science, PM, DevOps, AI/ML, or any custom role
 - 📊 **Adaptive difficulty** — Entry-level → Mid-level → Senior
+- 📋 **Job-description targeting** — paste a real job posting and every question adapts to its exact stack, tools, and responsibilities; the final evaluation scores you against the JD's requirements
 - 🤖 **Live AI interviewer** — one realistic question at a time, like a real interview
+- 🔁 **Adaptive follow-ups** — vague or thin answers trigger a "tell me more" probe from the interviewer (up to 2 per question) instead of moving on, just like a real interviewer would
 - ⚖️ **Strict, honest evaluation** — one-word answers score <30 / **No Hire**; detailed, example-backed answers score 80+ / Hire. No fake praise.
 - 🚫 **Answer quality gate** — blocks lazy answers so every evaluation is fair
 - 🎯 **Fix My Weakness** — AI detects your weakest skill and generates 3 targeted practice questions + a study tip

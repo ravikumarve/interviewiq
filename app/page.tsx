@@ -48,6 +48,7 @@ export default function Home() {
   const [role, setRole] = useState(ROLES[0].name);
   const [customRole, setCustomRole] = useState("");
   const [level, setLevel] = useState("Entry-level");
+  const [jd, setJd] = useState("");
   const [history, setHistory] = useState<Msg[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState("");
   const [input, setInput] = useState("");
@@ -59,9 +60,14 @@ export default function Home() {
   const [coachLoading, setCoachLoading] = useState(false);
   const [timeLeft, setTimeLeft] = useState(QUESTION_TIME);
   const [listening, setListening] = useState(false);
+  const [followUpActive, setFollowUpActive] = useState(false);
   const recognitionRef = useRef<any>(null);
   const answerStartedRef = useRef<number>(Date.now());
   const didTimeUpRef = useRef(false);
+  const followUpsRef = useRef(0); // follow-ups used on the current question (max 2)
+
+  const VAGUE_WORD_MAX = 14; // answers at/below this many words trigger a follow-up probe
+  const MAX_FOLLOWUPS = 2;
 
   const finalRole = customRole.trim() || role;
   const displayRole = `${finalRole} (${level})`;
@@ -154,6 +160,7 @@ export default function Home() {
         body: JSON.stringify({
           role: displayRole,
           action: "question",
+          jd,
           history: [{ role: "user", content: `Please start the interview for the ${displayRole} role.` }],
         }),
       });
@@ -195,12 +202,20 @@ export default function Home() {
     try {
       const nextCount = questionCount + 1;
       const isDone = questionCount >= MAX_QUESTIONS;
+      // Vague answers (short, thin) get ONE adaptive follow-up instead of a new topic —
+      // a real interviewer would say "tell me more." Never consumes a numbered question.
+      const wantsFollowUp =
+        !isDone &&
+        followUpsRef.current < MAX_FOLLOWUPS &&
+        wordCount <= VAGUE_WORD_MAX;
+      const action = isDone ? "evaluate" : wantsFollowUp ? "followup" : "question";
       const res = await fetch("/api/interview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           role: displayRole,
-          action: isDone ? "evaluate" : "question",
+          action,
+          jd,
           history: newHistory,
         }),
       });
@@ -213,7 +228,14 @@ export default function Home() {
       } else {
         setCurrentQuestion(data.question);
         setHistory([...newHistory, { role: "assistant", content: data.question }]);
-        setQuestionCount(nextCount);
+        if (action === "followup") {
+          followUpsRef.current += 1;
+          setFollowUpActive(true);
+        } else {
+          followUpsRef.current = 0;
+          setFollowUpActive(false);
+          setQuestionCount(nextCount);
+        }
         setTimeLeft(QUESTION_TIME);
         answerStartedRef.current = Date.now();
       }
@@ -460,6 +482,20 @@ export default function Home() {
               ))}
             </div>
 
+            <div className="assignment-label">
+              Job description <span className="jd-optional">OPTIONAL · QUESTIONS ADAPT TO IT</span>
+            </div>
+            <textarea
+              className="jd-box"
+              value={jd}
+              onChange={(e) => setJd(e.target.value)}
+              placeholder={
+                "Paste a real job posting here and the interviewer will drill into exactly what it asks for — stack, tools, responsibilities.\n\n" +
+                "e.g. 'We need a React developer with 3+ years of TypeScript, state management (Redux/Zustand), and experience with REST API integration…'"
+              }
+              rows={4}
+            />
+
             <div className="start-row">
               <button className="btn-primary" onClick={startInterview} disabled={!finalRole || loading}>
                 {loading ? "Starting…" : "Start Mock Interview"} →
@@ -483,6 +519,7 @@ export default function Home() {
             <div className="interview-top">
               <div className="q-counter">
                 Question <b>{Math.min(questionCount, MAX_QUESTIONS)}</b> of <b>{MAX_QUESTIONS}</b>
+                {followUpActive && <span className="followup-tag">· FOLLOW-UP</span>}
               </div>
               <div className={`timer ${timerWarn ? "warn" : ""}`}>
                 <span className="rec"></span>

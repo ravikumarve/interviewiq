@@ -119,6 +119,17 @@ body::before {
 }
 .level-pill.selected { border-color: var(--signal); color: var(--signal); background: var(--hire-soft); }
 
+.jd-optional { font-size: 9px; color: var(--signal); letter-spacing: 0.08em; }
+.jd-box {
+  width: 100%; background: var(--panel); border: 1px solid var(--line); color: var(--paper);
+  padding: 14px 16px; font-family: var(--sans); font-size: 13.5px; line-height: 1.55; resize: vertical;
+  border-radius: 0;
+}
+.jd-box::placeholder { color: var(--dim); }
+.jd-box:focus { outline: none; border-color: var(--signal); }
+
+.followup-tag { color: var(--signal); font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; }
+
 .start-row { display: flex; align-items: center; justify-content: space-between; margin-top: 36px; padding-bottom: 80px; gap: 16px; flex-wrap: wrap; }
 .btn-primary {
   background: var(--signal); color: var(--charcoal); border: none; padding: 16px 32px;

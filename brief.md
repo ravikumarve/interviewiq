@@ -14,6 +14,8 @@ InterviewIQ runs a 5-question live interview for a chosen role, scores each sess
 3. **Report** — after question 5, a strict evaluator scores the entire conversation (0–100) and stamps a hiring verdict. The report lists strengths, improvement areas, and offers a coach plan to fix the weakest skill — all exportable as PDF and shareable
 
 ## Differentiators
+- **Job-description targeting** — paste a real job posting and every question adapts to its exact stack, tools, and responsibilities (verified: a "Senior React Engineer — GraphQL, WCAG, Redux Toolkit" JD produces stack-specific questions, and the evaluation penalizes candidates who never touch those requirements)
+- **Adaptive follow-ups** — vague or thin answers trigger a "tell me more" probe from the interviewer (max 2 per question) instead of advancing the script; the interview feels like a real conversation, not a questionnaire (verified: "I used React" → "What specific optimization technique did you use?")
 - **Strict evaluator** — lazy answers score <35 (No Hire); detailed answers score 85+ (Lean Hire). No participation trophies
 - **Quality gate** — answers under 8 words are blocked before they reach the evaluator
 - **Skill fixer** — the coach reads your weakest area from the report and generates a personalized practice plan (verified: generates targeted React state management drills)
