@@ -10,6 +10,16 @@
 
 </div>
 
+## Demo
+
+<div align="center">
+
+**A full 5-question interview in ~25 seconds — live AI questions, real example-backed answers, honest verdict**
+
+<img src="screenshots/gif/interviewiq-demo.gif" alt="InterviewIQ demo — 5-question AI mock interview ending in a LEAN HIRE verdict with scorecard and peer benchmark" width="700"/>
+
+</div>
+
 ---
 
 ## Screenshots
