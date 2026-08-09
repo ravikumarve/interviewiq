@@ -61,6 +61,9 @@ export default function Home() {
   const [timeLeft, setTimeLeft] = useState(QUESTION_TIME);
   const [listening, setListening] = useState(false);
   const [followUpActive, setFollowUpActive] = useState(false);
+  const [peer, setPeer] = useState<{ percentile: number; rank: number; total: number } | null>(null);
+  const [leaderboard, setLeaderboard] = useState<any[] | null>(null);
+  const [peerLoading, setPeerLoading] = useState(false);
   const recognitionRef = useRef<any>(null);
   const answerStartedRef = useRef<number>(Date.now());
   const didTimeUpRef = useRef(false);
@@ -274,6 +277,38 @@ export default function Home() {
       setCoachLoading(false);
     }
   }
+
+  // Submit score to the shared leaderboard once the report renders, and fetch peers.
+  useEffect(() => {
+    if (step !== "report" || !evalData || typeof evalData.score !== "number") return;
+    let cancelled = false;
+    setPeerLoading(true);
+    (async () => {
+      try {
+        const [peerRes, boardRes] = await Promise.all([
+          fetch("/api/leaderboard", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ role: finalRole, level, score: evalData.score }),
+          }),
+          fetch(`/api/leaderboard?role=${encodeURIComponent(finalRole)}&limit=3`),
+        ]);
+        const peerData = await peerRes.json();
+        const boardData = await boardRes.json();
+        if (cancelled) return;
+        if (peerData.percentile !== undefined) setPeer(peerData);
+        if (Array.isArray(boardData.entries)) setLeaderboard(boardData.entries);
+      } catch {
+        // leaderboard is additive polish — never block the report
+      } finally {
+        if (!cancelled) setPeerLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
 
   function downloadPDF() {
     if (!evalData) return;
@@ -663,6 +698,31 @@ export default function Home() {
               )}
             </div>
 
+            <div className="peer-block">
+              <div className="h">◆ Peer Benchmark</div>
+              {peerLoading && <p className="peer-note">Comparing you against other candidates…</p>}
+              {!peerLoading && peer && (
+                <p className="peer-note">
+                  You scored <b>{evalData.score}</b> — beating <b>{peer.percentile}%</b> of{" "}
+                  {finalRole} candidates in our pool ({peer.total} interviews recorded).
+                </p>
+              )}
+              {!peerLoading && !peer && (
+                <p className="peer-note">You're one of the first — be the benchmark, then share your score.</p>
+              )}
+              {leaderboard && leaderboard.length > 0 && (
+                <div className="peer-board">
+                  {leaderboard.map((e, i) => (
+                    <div className="peer-row" key={i}>
+                      <span className="peer-rank">#{i + 1}</span>
+                      <span className="peer-score">{e.score}</span>
+                      <span className="peer-name">{e.role}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className="report-actions">
               <button className="btn-outline" onClick={downloadPDF}>
                 ↓ Download PDF Report
@@ -673,7 +733,10 @@ export default function Home() {
               <button
                 className="btn-outline"
                 onClick={async () => {
-                  const text = `I scored ${evalData.score}/100 (${evalData.hiring}) on InterviewIQ — AI mock interview coach.`;
+                  const rankLine = peer
+                    ? ` Beat ${peer.percentile}% of ${finalRole} candidates.`
+                    : "";
+                  const text = `I scored ${evalData.score}/100 (${evalData.hiring}) on InterviewIQ — AI mock interview coach.${rankLine}`;
                   try {
                     if (navigator.share) {
                       await navigator.share({ title: "InterviewIQ Report", text, url: window.location.href });
