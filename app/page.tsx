@@ -35,14 +35,6 @@ const DIFFICULTIES = [
 const MAX_QUESTIONS = 5;
 const QUESTION_TIME = 90; // seconds
 
-// Web Speech API types
-declare global {
-  interface Window {
-    SpeechRecognition?: any;
-    webkitSpeechRecognition?: any;
-  }
-}
-
 export default function Home() {
   const [step, setStep] = useState<"setup" | "interview" | "report">("setup");
   const [role, setRole] = useState(ROLES[0].name);
@@ -60,12 +52,16 @@ export default function Home() {
   const [coachLoading, setCoachLoading] = useState(false);
   const [timeLeft, setTimeLeft] = useState(QUESTION_TIME);
   const [listening, setListening] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   const [followUpActive, setFollowUpActive] = useState(false);
   const [peer, setPeer] = useState<{ percentile: number; rank: number; total: number } | null>(null);
   const [leaderboard, setLeaderboard] = useState<any[] | null>(null);
   const [peerLoading, setPeerLoading] = useState(false);
-  const recognitionRef = useRef<any>(null);
-  const voiceBaseRef = useRef(""); // committed (final) transcript — typed prefix + finalized voice
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const voiceBaseRef = useRef(""); // typed prefix — voice appends to it
+  const transcriberRef = useRef<any>(null); // cached in-browser whisper pipeline
   const answerStartedRef = useRef<number>(Date.now());
   const didTimeUpRef = useRef(false);
   const followUpsRef = useRef(0); // follow-ups used on the current question (max 2)
@@ -83,78 +79,75 @@ export default function Home() {
 
   const stopListening = useCallback(() => {
     try {
-      recognitionRef.current?.stop();
+      if (recorderRef.current && recorderRef.current.state !== "inactive") {
+        recorderRef.current.stop();
+      }
+      streamRef.current?.getTracks().forEach((t) => t.stop());
     } catch {}
     setListening(false);
   }, []);
 
   useEffect(() => () => stopListening(), [stopListening]);
 
-  function startListening() {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) {
-      setError("Voice input isn't supported in this browser — try Chrome/Edge/Safari, or type your answer.");
+  async function transcribeAudio(blob: Blob) {
+    setTranscribing(true);
+    try {
+      // Lazy-load the whisper model on first use (runs fully in-browser, no API key).
+      if (!transcriberRef.current) {
+        const { pipeline } = await import("@xenova/transformers");
+        transcriberRef.current = await pipeline("automatic-speech-recognition", "Xenova/whisper-tiny.en");
+      }
+      const { text } = await transcriberRef.current(blob, { language: "english", task: "transcribe" });
+      const clean = (text || "").trim();
+      const base = voiceBaseRef.current.trim();
+      setInput(clean ? (base ? base + " " + clean : clean) : base);
+    } catch (err) {
+      setError("Voice transcription failed — check your connection and try again, or just type your answer.");
+    } finally {
+      setTranscribing(false);
+    }
+  }
+
+  async function startListening() {
+    if (transcribing) return;
+    setError("");
+    voiceBaseRef.current = input;
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError("Voice input isn't supported in this browser — use Chrome, Edge, Safari, or Firefox, or type your answer.");
       return;
     }
-    setError("");
-    // Keep whatever the user already typed as the base; voice appends to it.
-    voiceBaseRef.current = input;
-    const rec = new SR();
-    rec.lang = "en-US";
-    rec.interimResults = true;
-    // Keep listening for the whole answer — user taps the mic again to stop,
-    // then submits. Never auto-stops mid-sentence (that caused truncated + repeated text).
-    rec.continuous = true;
-    recognitionRef.current = rec;
-
-    rec.onresult = (e: any) => {
-      let finalText = "";
-      let interimText = "";
-      // e.results is CUMULATIVE — append only finalized chunks once, and show
-      // the latest interim chunk as a replaceable preview (no word repetition).
-      for (let i = 0; i < e.results.length; i++) {
-        const r = e.results[i];
-        if (r.isFinal) finalText += r[0].transcript;
-        else interimText = r[0].transcript;
-      }
-      if (finalText) {
-        voiceBaseRef.current = (voiceBaseRef.current + " " + finalText).trim();
-      }
-      const base = voiceBaseRef.current;
-      setInput(interimText ? (base ? base + " " + interimText : interimText) : base);
-    };
-    rec.onerror = (e: any) => {
-      setListening(false);
-      switch (e.error) {
-        case "aborted":
-          break; // user stopped, no message
-        case "not-allowed":
-        case "service-not-allowed":
-          setError(
-            "Microphone access is blocked. Click the lock/padlock icon in the address bar → allow Microphone, then tap the mic again."
-          );
-          break;
-        case "no-speech":
-          setError("I didn't hear anything — tap the mic and speak, or just type your answer.");
-          break;
-        case "network":
-          setError("Voice service unavailable (network error) — type your answer instead.");
-          break;
-        default:
-          setError(`Mic error: ${e.error} — or just type your answer.`);
-      }
-    };
-    rec.onend = () => {
-      // Flush any pending preview text exactly once (no duplicates).
-      setInput(voiceBaseRef.current);
-      setListening(false);
-    };
     try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      chunksRef.current = [];
+      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/mp4")
+        ? "audio/mp4"
+        : "";
+      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      rec.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+      rec.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: mime || "audio/webm" });
+        stream.getTracks().forEach((t) => t.stop());
+        if (blob.size > 0) transcribeAudio(blob);
+      };
+      recorderRef.current = rec;
       rec.start();
       setListening(true);
-    } catch (err) {
-      setError("Couldn't start the microphone — allow mic access for this site, then tap the mic again.");
-      setListening(false);
+    } catch (err: any) {
+      const name = err?.name || "";
+      if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+        setError(
+          "Microphone access is blocked. Click the lock/padlock icon in the address bar → allow Microphone, then tap the mic again."
+        );
+      } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+        setError("No microphone found — connect a mic, or just type your answer.");
+      } else {
+        setError("Couldn't start the microphone — allow mic access for this site, then tap the mic again.");
+      }
     }
   }
 
@@ -620,9 +613,15 @@ export default function Home() {
                 <span
                   className={`voice-toggle ${listening ? "on" : ""}`}
                   onClick={listening ? stopListening : startListening}
+                  aria-disabled={transcribing}
+                  style={transcribing ? { pointerEvents: "none", opacity: 0.6 } : undefined}
                 >
                   <span className="dot"></span>
-                  {listening ? "Listening — tap to stop" : "Tap for voice input"}
+                  {transcribing
+                    ? "Transcribing…"
+                    : listening
+                    ? "Listening — tap to stop"
+                    : "Tap for voice input"}
                 </span>
               </div>
               <textarea
