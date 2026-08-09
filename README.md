@@ -29,6 +29,8 @@ Most students and job seekers fail interviews not because they lack knowledge, b
 - 📋 **Structured report** — score (0–100), verdict, strengths, improvements, hiring recommendation
 - 📱 **Fully responsive** — works on desktop and mobile
 - 🖨 **Exportable report** — save or print your results
+- 📊 **Peer benchmarking** — after your interview, see exactly what % of candidates you beat for your role, plus a live top-3 leaderboard. Share your result with the percentile — the ultimate "prove it" flex.
+- 🔗 **Share Result** — one click copies your report summary with percentile to clipboard (or native share on mobile)
 
 ## Tech Stack
 
@@ -43,6 +45,7 @@ Most students and job seekers fail interviews not because they lack knowledge, b
 2. **Answer 5 questions** — a live AI interviewer asks realistic questions one at a time
 3. **Get your report** — strict AI evaluation: score, verdict, strengths, improvements, hiring decision
 4. **Fix your weakness** — one click generates a targeted practice plan for your weakest skill
+5. **See where you stand** — your score joins a shared pool; the report shows your percentile vs. same-role candidates and a top-3 leaderboard (no signup, seeded baseline so early users never see 0%)
 
 ## Getting Started
 
@@ -62,6 +65,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | `NVIDIA_MODEL` | Optional — default `meta/llama-3.1-8b-instruct` |
 | `OLLAMA_URL` | Optional — local fallback, default `http://localhost:11434` |
 | `OLLAMA_MODEL` | Optional — local fallback model, default `tinyllama` |
+| `LEADERBOARD_URL` | Optional — Upstash Redis REST URL; defaults to the zero-config jsonblob store |
 
 ## API
 
@@ -72,6 +76,9 @@ Open [http://localhost:3000](http://localhost:3000).
 | `question` | next interview question |
 | `evaluate` | `{ evaluation: { score, verdict, strengths, improvements, hiring } }` |
 | `coach` | `{ plan: { skill, questions, tip } }` — targeted practice plan |
+
+`GET /api/leaderboard?role=<role>&limit=3` — top candidates for a role.
+`POST /api/leaderboard` with `{ role, level, score }` — record a result, returns percentile vs. peers.
 
 ## Live Demo
 
