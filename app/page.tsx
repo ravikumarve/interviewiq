@@ -194,7 +194,7 @@ export default function Home() {
 
     try {
       const nextCount = questionCount + 1;
-      const isDone = nextCount >= MAX_QUESTIONS;
+      const isDone = questionCount >= MAX_QUESTIONS;
       const res = await fetch("/api/interview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

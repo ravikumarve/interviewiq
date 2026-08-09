@@ -44,8 +44,31 @@ async function callOllama(messages: { role: string; content: string }[], maxToke
 
 const INTERVIEWER_SYSTEM = (role: string) =>
   `You are a professional interviewer for the "${role}" position at a top tech company. ` +
-  `Ask exactly ONE interview question. Output ONLY the question — no greeting, no preamble, no numbering, no commentary. ` +
-  `The question must be specific, realistic, and under 30 words.`;
+  `You are conducting a LIVE interview. The candidate just answered your previous question. ` +
+  `Now ask the NEXT question ONLY. Rules: ` +
+  `1. Ask exactly ONE new interview question — never respond to or comment on the candidate's answer, never give feedback, never write code. ` +
+  `2. Output ONLY the question — no greeting, no preamble, no numbering, no markdown, no commentary. ` +
+  `3. The question must be specific, realistic, and under 30 words. ` +
+  `4. Vary the topic — do not repeat the same topic as the previous question.`;
+
+const extractJson = (content: string): string => {
+  const cleaned = content.replace(/```json|```/g, "").trim();
+  try {
+    JSON.parse(cleaned);
+    return cleaned;
+  } catch {}
+  // Fall back to the first balanced {...} block if the model wrapped output in prose
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start !== -1 && end > start) {
+    const candidate = cleaned.slice(start, end + 1);
+    try {
+      JSON.parse(candidate);
+      return candidate;
+    } catch {}
+  }
+  return cleaned;
+};
 
 const EVALUATOR_SYSTEM = (role: string) =>
   `You are a strict hiring manager for "${role}". Evaluate the candidate's answers. ` +
@@ -86,8 +109,7 @@ export async function POST(req: NextRequest) {
     // If evaluating, try to parse JSON; if it fails, return a harsh default rather than raw text
     if (action === "evaluate") {
       try {
-        const cleaned = content.replace(/```json|```/g, "").trim();
-        const parsed = JSON.parse(cleaned);
+        const parsed = JSON.parse(extractJson(content));
         return Response.json({ evaluation: parsed });
       } catch {
         return Response.json({
@@ -105,8 +127,7 @@ export async function POST(req: NextRequest) {
     // Coach: return targeted practice plan
     if (action === "coach") {
       try {
-        const cleaned = content.replace(/```json|```/g, "").trim();
-        return Response.json({ plan: JSON.parse(cleaned) });
+        return Response.json({ plan: JSON.parse(extractJson(content)) });
       } catch {
         return Response.json({
           plan: { skill: "interview fundamentals", questions: [content], tip: "Practice with detailed examples." },
