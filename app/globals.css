@@ -1,26 +1,274 @@
 @import "tailwindcss";
 
+/* ── InterviewIQ "dossier" design system ─────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --charcoal: #1B1A18;
+  --panel: #232120;
+  --panel-2: #29271F;
+  --line: #3A3733;
+  --line-soft: #2A2823;
+  --paper: #EDE9E1;
+  --muted: #9A9284;
+  --dim: #5B564C;
+  --hire: #5C8A6A;
+  --hire-soft: rgba(92, 138, 106, 0.12);
+  --no: #B24A3F;
+  --no-soft: rgba(178, 74, 63, 0.12);
+  --signal: #CBA135;
+  --serif: "Newsreader", serif;
+  --sans: "Public Sans", sans-serif;
+  --mono: "IBM Plex Mono", monospace;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--charcoal);
+  color: var(--paper);
+  font-family: var(--sans);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Override native browser UI — no OS-purple fallbacks on focus/selection/scroll */
+html { accent-color: var(--signal); scrollbar-color: var(--line) var(--panel); }
+::selection { background: var(--hire-soft); color: var(--paper); }
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+textarea:focus-visible { outline: none; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--panel); }
+::-webkit-scrollbar-thumb { background: var(--line); border: 2px solid var(--panel); }
+::-webkit-scrollbar-thumb:hover { background: var(--dim); }
+
+/* faint paper-grain via subtle vignette */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(ellipse at 50% -10%, rgba(203, 161, 53, 0.05), transparent 60%);
+}
+
+.wrap { max-width: 900px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+/* ── shared: dossier chrome ─────────────────────────────────────── */
+.case-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 28px 0 16px;
+  border-bottom: 2px solid var(--line);
+}
+.case-mark { display: flex; align-items: center; gap: 10px; }
+.case-mark .glyph {
+  width: 30px; height: 30px; border: 1.5px solid var(--signal); border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 13px; color: var(--signal); font-weight: 600;
+}
+.case-mark .word { font-family: var(--serif); font-size: 20px; font-weight: 600; letter-spacing: 0.01em; }
+.case-meta { font-family: var(--mono); font-size: 10.5px; color: var(--dim); text-align: right; letter-spacing: 0.04em; line-height: 1.5; }
+
+/* ── SCREEN 1 — ROLE SELECT ─────────────────────────────────────── */
+.hero { padding: 64px 0 40px; }
+.hero h1 {
+  font-family: var(--serif); font-weight: 600; font-size: 52px; line-height: 1.04;
+  letter-spacing: -0.01em; max-width: 11ch;
+}
+.hero h1 em { font-style: italic; color: var(--signal); }
+.hero p { font-size: 16px; color: var(--muted); max-width: 46ch; margin-top: 18px; line-height: 1.6; }
+.hero .promise {
+  margin-top: 22px; font-family: var(--mono); font-size: 12px; color: var(--dim);
+  display: flex; gap: 18px; flex-wrap: wrap;
+}
+.hero .promise span { display: flex; align-items: center; gap: 6px; }
+.hero .promise b { color: var(--paper); font-weight: 600; }
+
+.assignment-label {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--dim); margin: 36px 0 14px; display: flex; align-items: center; gap: 10px;
+}
+.assignment-label::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+.role-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.role-card {
+  border: 1px solid var(--line); background: var(--panel); padding: 16px 14px;
+  cursor: pointer; position: relative; transition: border-color 0.15s, background 0.15s; text-align: left;
+}
+.role-card:hover { border-color: var(--dim); background: var(--panel-2); }
+.role-card.selected { border-color: var(--signal); background: var(--panel-2); }
+.role-card.selected::after {
+  content: "✓"; position: absolute; top: 8px; right: 10px; color: var(--signal); font-size: 12px;
+}
+.role-card .tag { font-family: var(--mono); font-size: 9.5px; color: var(--dim); margin-bottom: 8px; letter-spacing: 0.06em; }
+.role-card .name { font-size: 14px; font-weight: 500; }
+
+.custom-row { display: flex; gap: 10px; margin-top: 10px; }
+.custom-row input {
+  flex: 1; background: var(--panel); border: 1px solid var(--line); color: var(--paper);
+  padding: 14px 16px; font-family: var(--sans); font-size: 14px;
+}
+.custom-row input::placeholder { color: var(--dim); }
+.custom-row input:focus { outline: none; border-color: var(--signal); }
+
+.level-row { display: flex; gap: 10px; margin-top: 28px; }
+.level-pill {
+  flex: 1; text-align: center; padding: 12px; border: 1px solid var(--line); font-family: var(--mono);
+  font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); cursor: pointer;
+}
+.level-pill.selected { border-color: var(--signal); color: var(--signal); background: var(--hire-soft); }
+
+.start-row { display: flex; align-items: center; justify-content: space-between; margin-top: 36px; padding-bottom: 80px; gap: 16px; flex-wrap: wrap; }
+.btn-primary {
+  background: var(--signal); color: var(--charcoal); border: none; padding: 16px 32px;
+  font-family: var(--sans); font-weight: 700; font-size: 14.5px; letter-spacing: 0.01em;
+  cursor: pointer; display: flex; align-items: center; gap: 10px;
+}
+.btn-primary:hover { background: #DDB44A; }
+.btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+.start-fine { font-family: var(--mono); font-size: 11px; color: var(--dim); }
+
+/* ── SCREEN 2 — LIVE INTERVIEW ──────────────────────────────────── */
+.interview-top { display: flex; justify-content: space-between; align-items: center; padding: 20px 0; }
+.q-counter { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.q-counter b { color: var(--paper); }
+.timer {
+  font-family: var(--mono); font-size: 20px; color: var(--signal); font-weight: 600;
+  border: 1px solid var(--line); padding: 6px 16px; display: flex; align-items: center; gap: 8px;
+}
+.timer .rec { width: 7px; height: 7px; border-radius: 50%; background: var(--no); animation: iq-pulse 1.4s infinite; }
+.timer.warn { color: var(--no); border-color: var(--no); }
+@keyframes iq-pulse { 50% { opacity: 0.3; } }
+
+.progress-track { height: 2px; background: var(--line); margin-bottom: 36px; }
+.progress-fill { height: 2px; background: var(--signal); transition: width 0.4s ease; }
+
+.interviewer-block { margin-bottom: 32px; }
+.interviewer-block .who {
+  font-family: var(--mono); font-size: 10.5px; color: var(--dim); text-transform: uppercase;
+  letter-spacing: 0.1em; margin-bottom: 10px;
+}
+.question-card { border-left: 2px solid var(--signal); padding: 4px 0 4px 22px; }
+.question-card p {
+  font-family: var(--serif); font-size: 26px; line-height: 1.4; font-weight: 500; max-width: 34ch;
+}
+.question-card .difficulty {
+  display: inline-block; margin-top: 14px; font-family: var(--mono); font-size: 10px;
+  color: var(--muted); border: 1px solid var(--line); padding: 3px 9px; letter-spacing: 0.06em;
+}
+
+.answer-block { margin-top: 44px; }
+.answer-block .who {
+  font-family: var(--mono); font-size: 10.5px; color: var(--dim); text-transform: uppercase;
+  letter-spacing: 0.1em; margin-bottom: 10px; display: flex; justify-content: space-between; gap: 10px;
+}
+.voice-toggle {
+  display: flex; align-items: center; gap: 6px; color: var(--muted); cursor: pointer;
+  text-transform: none; letter-spacing: 0; font-size: 11px;
+}
+.voice-toggle .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--dim); }
+.voice-toggle.on .dot { background: var(--no); animation: iq-pulse 1s infinite; }
+.voice-toggle.on { color: var(--paper); }
+
+textarea.iq-answer {
+  width: 100%; min-height: 120px; background: transparent; border: none;
+  border-bottom: 1px solid var(--line); color: var(--paper); font-family: var(--sans);
+  font-size: 15px; line-height: 1.7; padding: 8px 0; resize: vertical;
+  background-image: repeating-linear-gradient(transparent, transparent 38px, var(--line-soft) 39px);
+}
+textarea.iq-answer::placeholder { color: var(--dim); }
+textarea.iq-answer:focus { outline: none; border-bottom-color: var(--signal); }
+
+.answer-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 18px; padding-bottom: 70px; gap: 16px; flex-wrap: wrap; }
+.gate-hint { font-family: var(--mono); font-size: 11px; color: var(--dim); }
+.gate-hint.warn { color: var(--no); }
+
+/* ── SCREEN 3 — REPORT ──────────────────────────────────────────── */
+.report-head { padding: 32px 0 8px; }
+.report-head .role-line { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+.report-head h2 { font-family: var(--serif); font-size: 30px; font-weight: 600; margin-top: 8px; }
+
+.verdict-zone {
+  position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+  border: 1px solid var(--line); margin: 28px 0 32px; min-height: 200px;
+}
+.verdict-left {
+  padding: 28px 30px; border-right: 1px solid var(--line);
+  display: flex; flex-direction: column; justify-content: center; gap: 14px;
+}
+.score-dial { display: flex; align-items: baseline; gap: 10px; }
+.score-dial .num { font-family: var(--serif); font-size: 64px; font-weight: 600; line-height: 1; }
+.score-dial .of100 { font-family: var(--mono); font-size: 14px; color: var(--dim); }
+.score-bar { height: 5px; background: var(--line); width: 100%; }
+.score-bar-fill { height: 5px; transition: width 0.6s ease; }
+.score-sub { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+.verdict-right {
+  display: flex; align-items: center; justify-content: center; position: relative;
+  background: repeating-linear-gradient(0deg, transparent, transparent 27px, var(--line-soft) 28px);
+}
+.stamp {
+  font-family: var(--mono); font-weight: 700; font-size: 30px; letter-spacing: 0.06em;
+  color: var(--hire); border: 3px solid var(--hire); padding: 10px 22px;
+  transform: rotate(-9deg); text-transform: uppercase;
+  box-shadow: 0 0 0 3px var(--charcoal), 0 0 0 4px var(--hire-soft);
+  opacity: 0.94; position: relative;
+}
+.stamp::before {
+  content: "InterviewIQ · Assessed"; position: absolute; bottom: -20px; left: 50%;
+  transform: translateX(-50%); font-size: 8px; letter-spacing: 0.12em; white-space: nowrap; color: var(--hire);
+  opacity: 0.7;
+}
+.stamp.no { color: var(--no); border-color: var(--no); box-shadow: 0 0 0 3px var(--charcoal), 0 0 0 4px var(--no-soft); }
+.stamp.no::before { color: var(--no); }
+.stamp.lean { color: var(--signal); border-color: var(--signal); box-shadow: 0 0 0 3px var(--charcoal), 0 0 0 4px rgba(203, 161, 53, 0.18); }
+.stamp.lean::before { color: var(--signal); }
+
+.scorecard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line); margin-bottom: 28px; }
+.scorecard-col { background: var(--charcoal); padding: 22px 24px; }
+.scorecard-col .h {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase;
+  margin-bottom: 14px; display: flex; align-items: center; gap: 8px;
+}
+.scorecard-col.strength .h { color: var(--hire); }
+.scorecard-col.improve .h { color: var(--no); }
+.scorecard-col ul { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.scorecard-col li { font-size: 13.5px; line-height: 1.55; padding-left: 16px; position: relative; color: var(--paper); }
+.scorecard-col.strength li::before { content: "+"; position: absolute; left: 0; color: var(--hire); font-weight: 700; }
+.scorecard-col.improve li::before { content: "−"; position: absolute; left: 0; color: var(--no); font-weight: 700; }
+
+.weakness-memo { border: 1px dashed var(--line); padding: 22px 24px; margin-bottom: 40px; position: relative; }
+.weakness-memo .h {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--signal); margin-bottom: 10px;
+}
+.weakness-memo p { font-size: 13.5px; color: var(--muted); line-height: 1.6; max-width: 60ch; }
+.weakness-memo .btn-ghost {
+  margin-top: 16px; background: none; border: 1px solid var(--signal); color: var(--signal);
+  padding: 10px 20px; font-family: var(--sans); font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.weakness-memo .btn-ghost:hover { background: var(--hire-soft); }
+.coach-plan { margin-top: 16px; border-top: 1px dashed var(--line); padding-top: 16px; }
+.coach-plan .cp-title { font-family: var(--mono); font-size: 11px; color: var(--paper); margin-bottom: 10px; }
+.coach-plan ol { margin-left: 20px; display: flex; flex-direction: column; gap: 8px; }
+.coach-plan li { font-size: 13.5px; color: var(--paper); line-height: 1.55; }
+.coach-plan .tip { margin-top: 12px; font-size: 12px; color: var(--dim); }
+
+.report-actions { display: flex; gap: 12px; padding-bottom: 80px; flex-wrap: wrap; }
+.btn-outline {
+  border: 1px solid var(--line); background: none; color: var(--paper); padding: 12px 22px;
+  font-family: var(--sans); font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.btn-outline:hover { border-color: var(--muted); }
+
+.foot { text-align: center; color: var(--dim); font-size: 11px; padding-bottom: 40px; }
+
+@media (max-width: 720px) {
+  .role-grid { grid-template-columns: repeat(2, 1fr); }
+  .hero h1 { font-size: 38px; }
+  .verdict-zone { grid-template-columns: 1fr; }
+  .verdict-left { border-right: none; border-bottom: 1px solid var(--line); }
+  .scorecard-grid { grid-template-columns: 1fr; }
+  .question-card p { font-size: 21px; }
 }

@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { jsPDF } from "jspdf";
 
-type Msg = { role: "user" | "assistant"; content: string; time?: string };
+type Msg = { role: "user" | "assistant"; content: string };
 type Eval = {
   score: number;
   verdict: string;
@@ -14,14 +14,22 @@ type Eval = {
 type CoachPlan = { skill: string; questions: string[]; tip: string };
 
 const ROLES = [
-  "Frontend Developer",
-  "Backend Developer",
-  "Full-Stack Developer",
-  "Data Scientist",
-  "Product Manager",
-  "DevOps Engineer",
-  "AI/ML Engineer",
-  "Software Engineering Intern",
+  { tag: "ENG · 01", name: "Frontend Developer" },
+  { tag: "ENG · 02", name: "Backend Developer" },
+  { tag: "ENG · 03", name: "Full-Stack Developer" },
+  { tag: "DATA · 04", name: "Data Scientist" },
+  { tag: "PROD · 05", name: "Product Manager" },
+  { tag: "OPS · 06", name: "DevOps Engineer" },
+  { tag: "AI · 07", name: "AI/ML Engineer" },
+  { tag: "ENG · 08", name: "SWE Intern" },
+];
+
+const DIFFICULTIES = [
+  "Technical · Depth check",
+  "Behavioral · Scenario",
+  "System · Trade-offs",
+  "Technical · Debugging",
+  "Behavioral · Judgment",
 ];
 
 const MAX_QUESTIONS = 5;
@@ -37,10 +45,11 @@ declare global {
 
 export default function Home() {
   const [step, setStep] = useState<"setup" | "interview" | "report">("setup");
-  const [role, setRole] = useState("");
+  const [role, setRole] = useState(ROLES[0].name);
   const [customRole, setCustomRole] = useState("");
-  const [level, setLevel] = useState("Mid-level");
-  const [messages, setMessages] = useState<Msg[]>([]);
+  const [level, setLevel] = useState("Entry-level");
+  const [history, setHistory] = useState<Msg[]>([]);
+  const [currentQuestion, setCurrentQuestion] = useState("");
   const [input, setInput] = useState("");
   const [questionCount, setQuestionCount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -50,42 +59,17 @@ export default function Home() {
   const [coachLoading, setCoachLoading] = useState(false);
   const [timeLeft, setTimeLeft] = useState(QUESTION_TIME);
   const [listening, setListening] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
   const answerStartedRef = useRef<number>(Date.now());
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
-
-  // Per-question timer
-  useEffect(() => {
-    if (step !== "interview" || loading) return;
-    const t = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(t);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(t);
-  }, [step, loading, questionCount]);
-
-  // Auto-submit when timer hits 0
-  useEffect(() => {
-    if (timeLeft === 0 && step === "interview" && !loading && input.trim().length >= 8) {
-      sendAnswer();
-    } else if (timeLeft === 0 && step === "interview" && !loading) {
-      setError("⏱ Time's up! The interviewer is waiting — type at least a few words to continue.");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeLeft]);
+  const didTimeUpRef = useRef(false);
 
   const finalRole = customRole.trim() || role;
   const displayRole = `${finalRole} (${level})`;
-  const fmtTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  const fmtTime = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = String(s % 60).padStart(2, "0");
+    return `${String(m).padStart(2, "0")}:${sec}`;
+  };
 
   const stopListening = useCallback(() => {
     try {
@@ -126,6 +110,36 @@ export default function Home() {
     setListening(true);
   }
 
+  // Per-question timer
+  useEffect(() => {
+    if (step !== "interview" || loading) return;
+    didTimeUpRef.current = false;
+    const t = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(t);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(t);
+  }, [step, loading, questionCount]);
+
+  // Auto-submit when timer hits 0 (respects the same depth gate)
+  useEffect(() => {
+    if (timeLeft === 0 && step === "interview" && !loading && !didTimeUpRef.current) {
+      didTimeUpRef.current = true;
+      const words = input.trim().split(/\s+/).filter(Boolean).length;
+      if (words >= 8 && input.trim().length >= 40) {
+        sendAnswer();
+      } else {
+        setError("Time's up — the interviewer is waiting. Give a real answer to continue.");
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeLeft]);
+
   async function startInterview() {
     if (!finalRole) return;
     setError("");
@@ -145,7 +159,8 @@ export default function Home() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to start");
-      setMessages([{ role: "assistant", content: data.question }]);
+      setCurrentQuestion(data.question);
+      setHistory([{ role: "assistant", content: data.question }]);
       setQuestionCount(1);
     } catch (e: any) {
       setError(e.message || "AI unavailable. Check NVIDIA_API_KEY.");
@@ -159,22 +174,22 @@ export default function Home() {
     const text = input.trim();
     if (!text || loading) return;
 
-    // Quality gate: block lazy answers so the AI can evaluate fairly
     const wordCount = text.split(/\s+/).length;
     if (wordCount < 8 || text.length < 40) {
       setError(
-        `Your answer is too short (${wordCount} words) for a fair evaluation. ` +
-        `Aim for 2-3 sentences with a concrete example or clear reasoning — real interviewers expect substance.`
+        `Answer too short (${wordCount} words) for a fair evaluation. ` +
+          `Aim for 2-3 sentences with a concrete example or clear reasoning.`
       );
       return;
     }
     stopListening();
     setError("");
     setInput("");
-    const answerTime = fmtTime(Math.max(0, Math.floor((Date.now() - answerStartedRef.current) / 1000)));
+    didTimeUpRef.current = true;
 
-    const newMessages: Msg[] = [...messages, { role: "user", content: text, time: answerTime }];
-    setMessages(newMessages);
+    const userMsg: Msg = { role: "user", content: text };
+    const newHistory: Msg[] = [...history, userMsg];
+    setHistory(newHistory);
     setLoading(true);
 
     try {
@@ -186,25 +201,24 @@ export default function Home() {
         body: JSON.stringify({
           role: displayRole,
           action: isDone ? "evaluate" : "question",
-          history: newMessages,
+          history: newHistory,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "AI call failed");
 
       if (isDone && data.evaluation) {
-        setMessages([...newMessages, { role: "assistant", content: "Interview complete. Generating your report…" }]);
         setEvalData(data.evaluation);
         setStep("report");
       } else {
-        setMessages([...newMessages, { role: "assistant", content: data.question }]);
+        setCurrentQuestion(data.question);
+        setHistory([...newHistory, { role: "assistant", content: data.question }]);
         setQuestionCount(nextCount);
         setTimeLeft(QUESTION_TIME);
         answerStartedRef.current = Date.now();
       }
     } catch (e: any) {
       setError(e.message || "AI unavailable");
-      setMessages(newMessages);
     } finally {
       setLoading(false);
     }
@@ -244,388 +258,402 @@ export default function Home() {
     const doc = new jsPDF();
     const pageW = doc.internal.pageSize.getWidth();
 
-    doc.setFillColor(10, 14, 26);
+    // Dossier dark theme
+    doc.setFillColor(27, 26, 24);
     doc.rect(0, 0, pageW, doc.internal.pageSize.getHeight(), "F");
-    doc.setTextColor(232, 236, 246);
+    doc.setTextColor(237, 233, 225);
+    doc.setFont("times", "bold");
+    doc.setFontSize(26);
+    doc.text("InterviewIQ", 20, 28);
+    doc.setFont("courier", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(91, 86, 76);
+    doc.text(`FILE #IQ-${String(Date.now()).slice(-4)} · ASSESSED ${new Date().toLocaleDateString()}`, 20, 36);
+    doc.setTextColor(155, 146, 132);
+    doc.text(`${displayRole.toUpperCase()} · ${questionCount}/${MAX_QUESTIONS} QUESTIONS ANSWERED`, 20, 44);
 
-    doc.setFontSize(24);
-    doc.setFont("helvetica", "bold");
-    doc.text("InterviewIQ — Interview Report", 20, 30);
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(139, 149, 179);
-    doc.text(`Role: ${displayRole}`, 20, 40);
-    doc.text(`Date: ${new Date().toLocaleDateString()}`, 20, 47);
-
-    doc.setTextColor(0, 206, 201);
-    doc.setFontSize(40);
-    doc.setFont("helvetica", "bold");
-    doc.text(`${evalData.score || "–"} / 100`, 20, 70);
-    doc.setTextColor(232, 236, 246);
+    doc.setFont("times", "bold");
+    doc.setFontSize(52);
+    doc.setTextColor(237, 233, 225);
+    doc.text(String(evalData.score || "–"), 20, 76);
+    doc.setFont("courier", "normal");
+    doc.setFontSize(11);
+    doc.setTextColor(91, 86, 76);
+    doc.text("/ 100", 52, 76);
+    doc.setFont("times", "bold");
     doc.setFontSize(18);
-    doc.text(`Verdict: ${evalData.hiring || "Review"}`, 20, 82);
+    doc.setTextColor(92, 138, 106);
+    doc.text(`VERDICT: ${(evalData.hiring || "Review").toUpperCase()}`, 20, 92);
+    doc.setFont("times", "normal");
     doc.setFontSize(11);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(139, 149, 179);
-    doc.text(doc.splitTextToSize(evalData.verdict || "", pageW - 40), 20, 92);
+    doc.setTextColor(155, 146, 132);
+    doc.text(doc.splitTextToSize(evalData.verdict || "", pageW - 40), 20, 102);
 
-    let y = 110;
-    doc.setTextColor(0, 206, 201);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(13);
-    doc.text("Strengths", 20, y);
+    let y = 126;
+    doc.setFont("courier", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(92, 138, 106);
+    doc.text("+ STRENGTHS", 20, y);
     y += 6;
-    doc.setTextColor(232, 236, 246);
-    doc.setFont("helvetica", "normal");
+    doc.setFont("times", "normal");
     doc.setFontSize(11);
+    doc.setTextColor(237, 233, 225);
     (evalData.strengths || []).forEach((s) => {
-      const lines = doc.splitTextToSize(`✓  ${s}`, pageW - 40);
-      doc.text(lines, 22, y);
+      const lines = doc.splitTextToSize(s, pageW - 44);
+      doc.text(lines, 24, y);
       y += 5 * lines.length + 3;
     });
 
     y += 8;
-    doc.setTextColor(253, 203, 110);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(13);
-    doc.text("Improvements", 20, y);
+    doc.setFont("courier", "bold");
+    doc.setTextColor(178, 74, 63);
+    doc.text("- NEEDS WORK", 20, y);
     y += 6;
-    doc.setTextColor(232, 236, 246);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(11);
+    doc.setFont("times", "normal");
+    doc.setTextColor(237, 233, 225);
     (evalData.improvements || []).forEach((s) => {
-      const lines = doc.splitTextToSize(`→  ${s}`, pageW - 40);
-      doc.text(lines, 22, y);
+      const lines = doc.splitTextToSize(s, pageW - 44);
+      doc.text(lines, 24, y);
       y += 5 * lines.length + 3;
     });
 
     if (coachPlan) {
       y += 8;
-      doc.setTextColor(162, 155, 254);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(13);
-      doc.text(`Practice Plan: ${coachPlan.skill}`, 20, y);
+      doc.setFont("courier", "bold");
+      doc.setTextColor(203, 161, 53);
+      doc.text(`TARGETED PRACTICE PLAN — ${coachPlan.skill.toUpperCase()}`, 20, y);
       y += 6;
-      doc.setTextColor(232, 236, 246);
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(11);
+      doc.setFont("times", "normal");
+      doc.setTextColor(237, 233, 225);
       (coachPlan.questions || []).forEach((q, i) => {
-        const lines = doc.splitTextToSize(`${i + 1}.  ${q}`, pageW - 40);
-        doc.text(lines, 22, y);
+        const lines = doc.splitTextToSize(`${i + 1}. ${q}`, pageW - 44);
+        doc.text(lines, 24, y);
         y += 5 * lines.length + 3;
       });
+      if (coachPlan.tip) {
+        doc.setFont("courier", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(91, 86, 76);
+        doc.text(doc.splitTextToSize(coachPlan.tip, pageW - 44), 24, y + 4);
+      }
     }
 
-    doc.setTextColor(139, 149, 179);
-    doc.setFontSize(9);
-    doc.text("Generated by InterviewIQ — AI Mock Interview Coach (Hack Devengers 1.0)", 20, doc.internal.pageSize.getHeight() - 12);
     doc.save(`InterviewIQ-Report-${finalRole.replace(/\s+/g, "-")}.pdf`);
   }
 
   function reset() {
     setStep("setup");
-    setMessages([]);
+    setHistory([]);
+    setCurrentQuestion("");
     setEvalData(null);
     setCoachPlan(null);
     setQuestionCount(0);
     setError("");
     setTimeLeft(QUESTION_TIME);
+    setInput("");
   }
 
+  const progress = questionCount / MAX_QUESTIONS;
+  const words = input.trim().split(/\s+/).filter(Boolean).length;
+  const gateOk = words >= 8 && input.trim().length >= 40;
   const timerWarn = timeLeft <= 15;
+  const stampClass = evalData?.hiring?.includes("No Hire")
+    ? "no"
+    : evalData?.hiring?.includes("Lean")
+    ? "lean"
+    : "";
+  const stampText = (evalData?.hiring || "Review").toUpperCase();
 
   return (
-    <main className="min-h-screen bg-[#0a0e1a] text-[#e8ecf6]" style={{
-      backgroundImage: "radial-gradient(1200px 600px at 80% -10%, #1e2a54 0%, transparent 60%), radial-gradient(800px 500px at -10% 20%, #1a2440 0%, transparent 55%)",
-    }}>
-      <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
-
-        {/* Header */}
-        <header className="mb-8 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#6c5ce7] to-[#a29bfe] text-xl font-black shadow-[0_4px_20px_rgba(108,92,231,0.4)]">
-              i
-            </div>
-            <div>
-              <h1 className="text-xl font-extrabold tracking-tight">InterviewIQ</h1>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8b95b3]">AI Mock Interview Coach</p>
-            </div>
-          </div>
-          {step !== "setup" && (
-            <button
-              onClick={reset}
-              className="rounded-lg border border-[#232e4a] bg-[#131a2e] px-3 py-1.5 text-xs font-semibold text-[#e8ecf6] hover:border-[#6c5ce7]"
-            >
-              ↺ New Interview
-            </button>
-          )}
-        </header>
-
+    <main className="flex-1">
+      <div className="wrap">
         {error && (
-          <div className="mb-4 rounded-xl border border-[#ff7675]/40 bg-[#ff7675]/10 px-4 py-3 text-sm text-[#ff7675]">
-            ⚠️ {error}
+          <div
+            style={{
+              border: "1px solid var(--no)",
+              background: "var(--no-soft)",
+              color: "var(--no)",
+              padding: "10px 16px",
+              fontSize: "13px",
+              marginTop: "16px",
+              fontFamily: "var(--mono)",
+            }}
+          >
+            {error}
           </div>
         )}
 
-        {/* SETUP */}
+        {/* ── SCREEN 1 · ROLE SELECT ── */}
         {step === "setup" && (
-          <div className="rounded-3xl border border-[#232e4a] bg-gradient-to-b from-[#131a2e] to-[#0f1526] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.45)] sm:p-9">
-            <h2 className="text-3xl font-extrabold tracking-tight">
-              Ace your next{" "}
-              <span className="bg-gradient-to-r from-[#a29bfe] to-[#00cec9] bg-clip-text text-transparent">interview.</span>
-            </h2>
-            <p className="mt-2 text-sm text-[#8b95b3]">
-              Pick a role, get interviewed by AI, receive a strict hiring verdict — in under 10 minutes.
-            </p>
+          <>
+            <div className="case-header">
+              <div className="case-mark">
+                <div className="glyph">iQ</div>
+                <div className="word">InterviewIQ</div>
+              </div>
+              <div className="case-meta">
+                AI MOCK INTERVIEW COACH
+                <br />
+                STRICT EVALUATION PROTOCOL
+              </div>
+            </div>
 
-            <label className="mt-7 mb-2 block text-[11px] font-bold uppercase tracking-[0.1em] text-[#8b95b3]">Choose a role</label>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <div className="hero">
+              <h1>
+                Practice like it&apos;s <em>real.</em> Get told the <em>truth.</em>
+              </h1>
+              <p>
+                Five realistic questions, one AI hiring manager who doesn&apos;t do fake praise, and a
+                targeted plan for exactly what&apos;s holding you back.
+              </p>
+              <div className="promise">
+                <span>
+                  <b>5</b> questions
+                </span>
+                <span>
+                  <b>~8 min</b> total
+                </span>
+                <span>
+                  <b>0</b> generic feedback
+                </span>
+              </div>
+            </div>
+
+            <div className="assignment-label">Select assignment</div>
+            <div className="role-grid">
               {ROLES.map((r) => (
                 <button
-                  key={r}
-                  onClick={() => { setRole(r); setCustomRole(""); }}
-                  className={`rounded-xl border px-3 py-3 text-left text-sm font-semibold transition hover:-translate-y-px hover:border-[#6c5ce7] ${
-                    role === r && !customRole
-                      ? "border-transparent bg-gradient-to-br from-[#6c5ce7] to-[#a29bfe] shadow-[0_6px_24px_rgba(108,92,231,0.35)]"
-                      : "border-[#232e4a] bg-[#1a2338] text-[#e8ecf6]"
-                  }`}
+                  key={r.name}
+                  onClick={() => {
+                    setRole(r.name);
+                    setCustomRole("");
+                  }}
+                  className={`role-card ${role === r.name && !customRole ? "selected" : ""}`}
                 >
-                  {r}
+                  <div className="tag">{r.tag}</div>
+                  <div className="name">{r.name}</div>
                 </button>
               ))}
             </div>
+            <div className="custom-row">
+              <input
+                type="text"
+                value={customRole}
+                onChange={(e) => {
+                  setCustomRole(e.target.value);
+                  if (e.target.value) setRole("");
+                }}
+                placeholder="Or type any role — e.g. 'Growth Marketer, Series A startup'"
+              />
+            </div>
 
-            <label className="mt-5 mb-2 block text-[11px] font-bold uppercase tracking-[0.1em] text-[#8b95b3]">Or custom role</label>
-            <input
-              value={customRole}
-              onChange={(e) => { setCustomRole(e.target.value); if (e.target.value) setRole(""); }}
-              placeholder="e.g., Android Developer, UX Designer…"
-              className="w-full rounded-xl border border-[#232e4a] bg-[#1a2338] px-4 py-3.5 text-sm text-[#e8ecf6] placeholder-[#8b95b3] outline-none focus:border-[#6c5ce7]"
-            />
-
-            <label className="mt-5 mb-2 block text-[11px] font-bold uppercase tracking-[0.1em] text-[#8b95b3]">Experience level</label>
-            <div className="flex gap-2">
+            <div className="assignment-label">Experience level</div>
+            <div className="level-row">
               {["Entry-level", "Mid-level", "Senior"].map((l) => (
                 <button
                   key={l}
                   onClick={() => setLevel(l)}
-                  className={`flex-1 rounded-xl border px-4 py-3 text-sm font-bold transition ${
-                    level === l
-                      ? "border-[#00cec9] bg-[#00cec9]/10 text-[#00cec9]"
-                      : "border-[#232e4a] bg-[#1a2338] text-[#e8ecf6]"
-                  }`}
+                  className={`level-pill ${level === l ? "selected" : ""}`}
                 >
                   {l}
                 </button>
               ))}
             </div>
 
-            <button
-              onClick={startInterview}
-              disabled={!finalRole || loading}
-              className="mt-7 w-full rounded-2xl bg-gradient-to-r from-[#6c5ce7] to-[#a29bfe] py-4 text-sm font-extrabold text-white shadow-[0_10px_40px_rgba(108,92,231,0.4)] transition hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {loading ? "Starting interview…" : "Start Mock Interview →"}
-            </button>
-            <p className="mt-3 text-center text-[11px] text-[#8b95b3]">
-              {MAX_QUESTIONS} questions · {QUESTION_TIME}s each · voice or typed answers · instant AI verdict
-            </p>
-          </div>
+            <div className="start-row">
+              <button className="btn-primary" onClick={startInterview} disabled={!finalRole || loading}>
+                {loading ? "Starting…" : "Start Mock Interview"} →
+              </button>
+              <div className="start-fine">No sign-up · No fake praise · Straight verdict</div>
+            </div>
+          </>
         )}
 
-        {/* INTERVIEW */}
+        {/* ── SCREEN 2 · LIVE INTERVIEW ── */}
         {step === "interview" && (
-          <div className="rounded-3xl border border-[#232e4a] bg-gradient-to-b from-[#131a2e] to-[#0f1526] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.45)] sm:p-6">
-            <div className="mb-4 flex items-center justify-between border-b border-[#232e4a] pb-3">
-              <div>
-                <p className="text-sm font-extrabold">{displayRole}</p>
-                <p className="text-[11px] text-[#8b95b3]">Question {Math.min(questionCount, MAX_QUESTIONS)} of {MAX_QUESTIONS}</p>
+          <>
+            <div className="case-header">
+              <div className="case-mark">
+                <div className="glyph">iQ</div>
+                <div className="word">InterviewIQ</div>
               </div>
-              <div className="flex items-center gap-3">
-                <div className="flex gap-1">
-                  {Array.from({ length: MAX_QUESTIONS }).map((_, i) => (
-                    <div key={i} className={`h-1.5 w-6 rounded-full ${i < questionCount ? "bg-[#a29bfe]" : "bg-[#232e4a]"}`} />
-                  ))}
-                </div>
-                <div className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-extrabold tabular-nums ${
-                  timerWarn
-                    ? "border-[#ff7675]/40 bg-[#ff7675]/10 text-[#ff7675]"
-                    : "border-[#fdcb6e]/30 bg-[#fdcb6e]/10 text-[#fdcb6e]"
-                }`}>
-                  ⏱ {fmtTime(timeLeft)}
+              <div className="case-meta">{finalRole.toUpperCase()} · {level.toUpperCase()}</div>
+            </div>
+
+            <div className="interview-top">
+              <div className="q-counter">
+                Question <b>{Math.min(questionCount, MAX_QUESTIONS)}</b> of <b>{MAX_QUESTIONS}</b>
+              </div>
+              <div className={`timer ${timerWarn ? "warn" : ""}`}>
+                <span className="rec"></span>
+                {fmtTime(timeLeft)}
+              </div>
+            </div>
+            <div className="progress-track">
+              <div className="progress-fill" style={{ width: `${progress * 100}%` }}></div>
+            </div>
+
+            <div className="interviewer-block">
+              <div className="who">Interviewer</div>
+              <div className="question-card">
+                <p>{loading ? "Reading your answer and drafting the next question…" : currentQuestion}</p>
+                <div className="difficulty">
+                  {DIFFICULTIES[(questionCount - 1) % DIFFICULTIES.length]}
                 </div>
               </div>
             </div>
 
-            <div className="max-h-[45vh] space-y-3.5 overflow-y-auto py-2">
-              {messages.map((m, i) => (
-                <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-                  <div
-                    className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                      m.role === "user"
-                        ? "rounded-br-md bg-gradient-to-br from-[#6c5ce7] to-[#a29bfe] text-white"
-                        : "rounded-bl-md border border-[#232e4a] bg-[#1a2338] text-[#e8ecf6]"
-                    }`}
-                  >
-                    {m.role === "user" && (
-                      <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider opacity-75">You</span>
-                    )}
-                    {m.content}
-                    {m.time && m.role === "user" && (
-                      <span className="mt-1.5 block text-[10px] opacity-60">⏱ {m.time}</span>
-                    )}
-                  </div>
-                </div>
-              ))}
-              {loading && (
-                <div className="flex justify-start">
-                  <div className="rounded-2xl rounded-bl-md border border-[#232e4a] bg-[#1a2338] px-4 py-3 text-sm text-[#8b95b3]">
-                    <span className="inline-flex gap-1">
-                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#8b95b3]" />
-                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#8b95b3] [animation-delay:0.1s]" />
-                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#8b95b3] [animation-delay:0.2s]" />
-                    </span>
-                  </div>
-                </div>
-              )}
-              <div ref={bottomRef} />
-            </div>
-
-            <div className="mt-4 flex gap-2.5">
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && sendAnswer()}
-                placeholder="Type your answer, or tap the mic…"
-                className="flex-1 rounded-xl border border-[#232e4a] bg-[#1a2338] px-4 py-3 text-sm text-[#e8ecf6] placeholder-[#8b95b3] outline-none focus:border-[#6c5ce7]"
-                disabled={loading}
-              />
-              <button
-                onClick={listening ? stopListening : startListening}
-                className={`w-13 rounded-xl border px-4 text-lg transition ${
-                  listening
-                    ? "animate-pulse border-[#ff7675] bg-[#ff7675] text-white"
-                    : "border-[#232e4a] bg-[#1a2338] text-[#8b95b3] hover:border-[#6c5ce7]"
-                }`}
-                title="Voice input"
-              >
-                🎤
-              </button>
-              <button
-                onClick={sendAnswer}
-                disabled={loading || !input.trim()}
-                className="rounded-xl bg-gradient-to-r from-[#6c5ce7] to-[#a29bfe] px-5 py-3 text-sm font-extrabold text-white disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {loading ? "…" : "Send"}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* REPORT */}
-        {step === "report" && evalData && (
-          <div className="rounded-3xl border border-[#232e4a] bg-gradient-to-b from-[#131a2e] to-[#0f1526] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.45)] sm:p-8">
-            {/* Verdict banner — front and center */}
-            <div className={`flex flex-col items-center gap-4 rounded-2xl border p-5 text-center sm:flex-row sm:text-left ${
-              evalData.hiring?.includes("Hire") && !evalData.hiring.includes("No Hire")
-                ? "border-[#00cec9]/40 bg-gradient-to-r from-[#00cec9]/15 to-transparent"
-                : evalData.hiring?.includes("Lean")
-                ? "border-[#fdcb6e]/40 bg-gradient-to-r from-[#fdcb6e]/15 to-transparent"
-                : "border-[#ff7675]/40 bg-gradient-to-r from-[#ff7675]/15 to-transparent"
-            }`}>
-              <div
-                className={`flex h-24 w-24 flex-shrink-0 items-center justify-center rounded-full border-8 text-3xl font-black ${
-                  evalData.score >= 70
-                    ? "border-[#00cec9]/40 bg-[#00cec9]/10 text-[#00cec9]"
-                    : evalData.score >= 45
-                    ? "border-[#fdcb6e]/40 bg-[#fdcb6e]/10 text-[#fdcb6e]"
-                    : "border-[#ff7675]/40 bg-[#ff7675]/10 text-[#ff7675]"
-                }`}
-              >
-                {evalData.score || "–"}
-              </div>
-              <div className="flex-1">
-                <h3 className="text-3xl font-black tracking-tight">{evalData.hiring || "Review"}</h3>
-                <p className="mt-1 text-sm text-[#8b95b3]">{evalData.verdict}</p>
-                <span className={`mt-2 inline-block rounded-full px-3.5 py-1 text-xs font-extrabold uppercase tracking-wider ${
-                  evalData.hiring?.includes("Hire") && !evalData.hiring.includes("No Hire")
-                    ? "bg-[#00cec9]/15 text-[#00cec9]"
-                    : evalData.hiring?.includes("Lean")
-                    ? "bg-[#fdcb6e]/15 text-[#fdcb6e]"
-                    : "bg-[#ff7675]/15 text-[#ff7675]"
-                }`}>
-                  Verdict: {evalData.hiring || "Review"}
+            <div className="answer-block">
+              <div className="who">
+                <span>Your Answer</span>
+                <span
+                  className={`voice-toggle ${listening ? "on" : ""}`}
+                  onClick={listening ? stopListening : startListening}
+                >
+                  <span className="dot"></span>
+                  {listening ? "Voice input active" : "Tap for voice input"}
                 </span>
               </div>
+              <textarea
+                className="iq-answer"
+                placeholder="Speak or type your answer — be specific, use a real example if you can."
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                disabled={loading}
+              ></textarea>
             </div>
 
-            <div className="mt-5 grid gap-4 sm:grid-cols-2">
-              <div className="rounded-2xl border border-[#232e4a] bg-[#1a2338] p-4">
-                <h3 className="mb-2 text-[11px] font-extrabold uppercase tracking-[0.1em] text-[#00cec9]">Strengths</h3>
-                <ul className="space-y-2">
-                  {(evalData.strengths || []).map((s, i) => (
-                    <li key={i} className="flex gap-2 text-sm text-[#e8ecf6]">
-                      <span className="font-bold text-[#00cec9]">✓</span> {s}
-                    </li>
-                  ))}
-                </ul>
+            <div className="answer-foot">
+              <div className={`gate-hint ${gateOk || !input.trim() ? "" : "warn"}`}>
+                {!input.trim()
+                  ? "Minimum depth: 2-3 sentences with a real example"
+                  : gateOk
+                  ? "Minimum answer depth reached — evaluator will accept this"
+                  : `Answer too short (${words} words) — evaluator needs more depth`}
               </div>
-              <div className="rounded-2xl border border-[#232e4a] bg-[#1a2338] p-4">
-                <h3 className="mb-2 text-[11px] font-extrabold uppercase tracking-[0.1em] text-[#fdcb6e]">Improve</h3>
-                <ul className="space-y-2">
-                  {(evalData.improvements || []).map((s, i) => (
-                    <li key={i} className="flex gap-2 text-sm text-[#e8ecf6]">
-                      <span className="font-bold text-[#fdcb6e]">→</span> {s}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-
-            {!coachPlan ? (
-              <button
-                onClick={fixWeakness}
-                disabled={coachLoading}
-                className="mt-5 w-full rounded-2xl border border-dashed border-[#6c5ce7]/60 bg-gradient-to-r from-[#6c5ce7]/15 to-[#00cec9]/10 py-3.5 text-sm font-bold text-[#a29bfe] transition hover:bg-[#6c5ce7]/25 disabled:opacity-50"
-              >
-                {coachLoading ? "Generating your practice plan…" : "🎯 Fix My Weakness — Get a Targeted Practice Plan"}
-              </button>
-            ) : (
-              <div className="mt-5 rounded-2xl border border-[#6c5ce7]/40 bg-gradient-to-br from-[#6c5ce7]/15 to-[#00cec9]/10 p-5">
-                <h3 className="text-sm font-extrabold text-[#a29bfe]">🎯 Practice Plan: {coachPlan.skill}</h3>
-                <ol className="mt-3 space-y-2">
-                  {coachPlan.questions.map((q, i) => (
-                    <li key={i} className="flex gap-2 text-sm text-[#e8ecf6]">
-                      <span className="font-bold text-[#a29bfe]">{i + 1}.</span> {q}
-                    </li>
-                  ))}
-                </ol>
-                {coachPlan.tip && (
-                  <p className="mt-3 rounded-xl bg-black/25 px-3 py-2 text-xs text-[#8b95b3]">💡 {coachPlan.tip}</p>
-                )}
-              </div>
-            )}
-
-            <div className="mt-6 flex flex-col gap-2.5 sm:flex-row">
-              <button
-                onClick={reset}
-                className="flex-1 rounded-xl border border-[#232e4a] bg-[#1a2338] py-3 text-sm font-bold text-[#e8ecf6] transition hover:border-[#6c5ce7]"
-              >
-                ↺ Practice Again
-              </button>
-              <button
-                onClick={downloadPDF}
-                className="flex-1 rounded-xl bg-gradient-to-r from-[#6c5ce7] to-[#a29bfe] py-3 text-sm font-bold text-white shadow-[0_8px_30px_rgba(108,92,231,0.35)] transition hover:-translate-y-px"
-              >
-                ⬇ Download PDF Report
+              <button className="btn-primary" onClick={sendAnswer} disabled={loading}>
+                {loading ? "Evaluating…" : "Submit Answer"} →
               </button>
             </div>
-          </div>
+          </>
         )}
 
-        <footer className="mt-8 text-center text-[11px] text-[#8b95b3]">
-          Built for Hack Devengers 1.0 · AI-powered mock interviews · 9 Aug 2026
-        </footer>
+        {/* ── SCREEN 3 · REPORT ── */}
+        {step === "report" && evalData && (
+          <>
+            <div className="case-header">
+              <div className="case-mark">
+                <div className="glyph">iQ</div>
+                <div className="word">InterviewIQ</div>
+              </div>
+              <div className="case-meta">
+                FILE #IQ-{String(Date.now()).slice(-4)}
+                <br />
+                ASSESSED {new Date().toLocaleDateString("en-US", { day: "2-digit", month: "short", year: "numeric" }).toUpperCase()}
+              </div>
+            </div>
+
+            <div className="report-head">
+              <div className="role-line">
+                {finalRole.toUpperCase()} · {level.toUpperCase()} · {questionCount}/{MAX_QUESTIONS} QUESTIONS ANSWERED
+              </div>
+              <h2>Assessment Report</h2>
+            </div>
+
+            <div className="verdict-zone">
+              <div className="verdict-left">
+                <div className="score-dial">
+                  <span className="num">{evalData.score || "–"}</span>
+                  <span className="of100">/ 100</span>
+                </div>
+                <div className="score-bar">
+                  <div
+                    className="score-bar-fill"
+                    style={{
+                      width: `${Math.min(100, evalData.score || 0)}%`,
+                      background:
+                        evalData.score >= 70 ? "var(--hire)" : evalData.score >= 45 ? "var(--signal)" : "var(--no)",
+                    }}
+                  ></div>
+                </div>
+                <div className="score-sub">{evalData.verdict}</div>
+              </div>
+              <div className="verdict-right">
+                <div className={`stamp ${stampClass}`}>{stampText}</div>
+              </div>
+            </div>
+
+            <div className="scorecard-grid">
+              <div className="scorecard-col strength">
+                <div className="h">◆ Strengths</div>
+                <ul>
+                  {(evalData.strengths || []).map((s, i) => (
+                    <li key={i}>{s}</li>
+                  ))}
+                </ul>
+              </div>
+              <div className="scorecard-col improve">
+                <div className="h">◆ Needs Work</div>
+                <ul>
+                  {(evalData.improvements || []).map((s, i) => (
+                    <li key={i}>{s}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            <div className="weakness-memo">
+              <div className="h">⚑ Weakest signal detected — {(evalData.improvements?.[0] || "communication structure").slice(0, 40)}</div>
+              <p>
+                {(evalData.improvements?.[0] || "Your reasoning is solid, but answers can wander before landing on the point.")}{" "}
+                In a real interview this reads as uncertainty even when the knowledge is there. We can generate
+                3 targeted practice questions for this specific pattern.
+              </p>
+              {!coachPlan ? (
+                <button className="btn-ghost" onClick={fixWeakness} disabled={coachLoading}>
+                  {coachLoading ? "Generating plan…" : "Fix My Weakness →"}
+                </button>
+              ) : (
+                <div className="coach-plan">
+                  <div className="cp-title">TARGETED PRACTICE PLAN — {coachPlan.skill.toUpperCase()}</div>
+                  <ol>
+                    {coachPlan.questions.map((q, i) => (
+                      <li key={i}>{q}</li>
+                    ))}
+                  </ol>
+                  {coachPlan.tip && <div className="tip">💡 {coachPlan.tip}</div>}
+                </div>
+              )}
+            </div>
+
+            <div className="report-actions">
+              <button className="btn-outline" onClick={downloadPDF}>
+                ↓ Download PDF Report
+              </button>
+              <button className="btn-outline" onClick={reset}>
+                ↻ Retry This Role
+              </button>
+              <button
+                className="btn-outline"
+                onClick={async () => {
+                  const text = `I scored ${evalData.score}/100 (${evalData.hiring}) on InterviewIQ — AI mock interview coach.`;
+                  try {
+                    if (navigator.share) {
+                      await navigator.share({ title: "InterviewIQ Report", text, url: window.location.href });
+                    } else {
+                      await navigator.clipboard.writeText(`${text} ${window.location.href}`);
+                      setError("Report link copied to clipboard");
+                    }
+                  } catch {}
+                }}
+              >
+                Share Result
+              </button>
+            </div>
+          </>
+        )}
+
+        <div className="foot">InterviewIQ · AI mock interview coach · 9 Aug 2026</div>
       </div>
     </main>
   );
