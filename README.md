@@ -1,6 +1,8 @@
 # 🎯 InterviewIQ — AI Mock Interview Coach
 
-> Practice real interviews for any role. Get instant, honest AI feedback — and a targeted plan to fix your weaknesses. Built for **Hack Devengers 1.0** (9 Aug 2026).
+> **The AI interviewer that doesn't fake praise.** Practice real interviews for any role, get scored like a strict hiring manager, and walk away with a targeted plan to fix what's actually holding you back.
+>
+> Built for **Hack Devengers 1.0** (9 Aug 2026).
 
 <div align="center">
 
