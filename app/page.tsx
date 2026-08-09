@@ -35,6 +35,8 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [evalData, setEvalData] = useState<Eval | null>(null);
   const [error, setError] = useState("");
+  const [coachPlan, setCoachPlan] = useState<{ skill: string; questions: string[]; tip: string } | null>(null);
+  const [coachLoading, setCoachLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -121,10 +123,40 @@ export default function Home() {
     }
   }
 
+  async function fixWeakness() {
+    setCoachLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/interview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          role: displayRole,
+          action: "coach",
+          history: [
+            {
+              role: "user",
+              content: `My interview report gave me these improvements: ${(evalData?.improvements || []).join(", ")}. ` +
+                `Give me a targeted practice plan to fix my weakest skill.`,
+            },
+          ],
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Coach unavailable");
+      setCoachPlan(data.plan);
+    } catch (e: any) {
+      setError(e.message || "Coach unavailable");
+    } finally {
+      setCoachLoading(false);
+    }
+  }
+
   function reset() {
     setStep("setup");
     setMessages([]);
     setEvalData(null);
+    setCoachPlan(null);
     setQuestionCount(0);
     setError("");
   }
@@ -338,6 +370,35 @@ export default function Home() {
                 </ul>
               </div>
             </div>
+
+            {!coachPlan ? (
+              <button
+                onClick={fixWeakness}
+                disabled={coachLoading}
+                className="mt-6 w-full rounded-xl border-2 border-dashed border-indigo-300 bg-indigo-50/50 py-3 text-sm font-bold text-indigo-700 transition hover:bg-indigo-100 disabled:opacity-50"
+              >
+                {coachLoading ? "Generating your practice plan…" : "🎯 Fix My Weakness — Get a Targeted Practice Plan"}
+              </button>
+            ) : (
+              <div className="mt-6 rounded-xl border border-indigo-200 bg-indigo-50/60 p-5">
+                <div className="mb-1 flex items-center gap-2">
+                  <span className="text-lg">🎯</span>
+                  <h3 className="text-sm font-bold text-indigo-800">Practice Plan: {coachPlan.skill}</h3>
+                </div>
+                <ol className="mt-3 space-y-2">
+                  {coachPlan.questions.map((q, i) => (
+                    <li key={i} className="flex gap-2 text-sm text-zinc-700">
+                      <span className="font-bold text-indigo-500">{i + 1}.</span> {q}
+                    </li>
+                  ))}
+                </ol>
+                {coachPlan.tip && (
+                  <p className="mt-3 rounded-lg bg-white/70 px-3 py-2 text-xs text-indigo-700">
+                    💡 {coachPlan.tip}
+                  </p>
+                )}
+              </div>
+            )}
 
             <div className="mt-6 flex flex-col gap-2 sm:flex-row">
               <button

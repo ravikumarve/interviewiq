@@ -54,6 +54,12 @@ const EVALUATOR_SYSTEM = (role: string) =>
   `Respond ONLY with JSON (no markdown, no extra text): ` +
   `{"score": number, "verdict": string, "strengths": [string], "improvements": [string], "hiring": "Hire"|"Lean Hire"|"Lean No Hire"|"No Hire"}`;
 
+const COACH_SYSTEM =
+  `You are a personal interview coach. Based on the candidate's weakest area from their report, ` +
+  `generate 3 targeted practice questions to fix that specific skill gap. ` +
+  `Output ONLY JSON (no markdown): ` +
+  `{"skill": "the weak skill to fix", "questions": ["q1","q2","q3"], "tip": "one-line study tip"}`;
+
 export async function POST(req: NextRequest) {
   try {
     const { role, history, action } = await req.json();
@@ -62,17 +68,17 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: "role and history are required" }, { status: 400 });
     }
 
-    const system = action === "evaluate" ? EVALUATOR_SYSTEM(role) : INTERVIEWER_SYSTEM(role);
+    const system = action === "evaluate" ? EVALUATOR_SYSTEM(role) : action === "coach" ? COACH_SYSTEM : INTERVIEWER_SYSTEM(role);
     const messages = [{ role: "system", content: system }, ...history];
 
     let content = "";
     try {
       content = NVIDIA_KEY
-        ? await callNvidia(messages, action === "evaluate" ? 700 : 200)
-        : await callOllama(messages, action === "evaluate" ? 700 : 200);
+        ? await callNvidia(messages, action === "evaluate" ? 700 : action === "coach" ? 400 : 200)
+        : await callOllama(messages, action === "evaluate" ? 700 : action === "coach" ? 400 : 200);
     } catch {
       // fallback: local Ollama if NVIDIA fails
-      content = await callOllama(messages, action === "evaluate" ? 700 : 200);
+      content = await callOllama(messages, action === "evaluate" ? 700 : action === "coach" ? 400 : 200);
     }
 
     if (!content) throw new Error("Empty response from AI provider");
@@ -92,6 +98,18 @@ export async function POST(req: NextRequest) {
             improvements: ["Provide detailed, example-backed answers during the interview."],
             hiring: "No Hire",
           },
+        });
+      }
+    }
+
+    // Coach: return targeted practice plan
+    if (action === "coach") {
+      try {
+        const cleaned = content.replace(/```json|```/g, "").trim();
+        return Response.json({ plan: JSON.parse(cleaned) });
+      } catch {
+        return Response.json({
+          plan: { skill: "interview fundamentals", questions: [content], tip: "Practice with detailed examples." },
         });
       }
     }
